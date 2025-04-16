@@ -1,0 +1,179 @@
+const Withdrawal = require('../models/Withdrawal');
+const User = require('../models/User');
+const Investment = require('../models/Investment');
+const Referral = require('../models/Referral');
+const validateWithdrawalInput = require('../validation/withdrawal');
+
+// @route   POST api/withdrawals
+// @desc    Request a withdrawal
+// @access  Private
+exports.requestWithdrawal = async (req, res) => {
+  try {
+    // Validate input
+    const { errors, isValid } = validateWithdrawalInput(req.body);
+    
+    if (!isValid) {
+      return res.status(400).json(errors);
+    }
+
+    const { amount, method, paymentDetails } = req.body;
+    
+    // Check minimum withdrawal amount based on method
+    const minimumAmount = getMinimumWithdrawalAmount(method);
+    if (amount < minimumAmount) {
+      return res.status(400).json({ 
+        amount: `Minimum withdrawal for ${method} is $${minimumAmount}` 
+      });
+    }
+
+    // Check if user has enough balance
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.balance < amount) {
+      return res.status(400).json({ 
+        amount: `Insufficient balance. Available: $${user.balance.toFixed(2)}` 
+      });
+    }
+
+    // Create withdrawal request
+    const newWithdrawal = new Withdrawal({
+      user: req.user.id,
+      amount,
+      method,
+      paymentDetails
+    });
+
+    // Deduct the amount from user's balance
+    user.balance -= amount;
+    await user.save();
+    
+    await newWithdrawal.save();
+    
+    res.json(newWithdrawal);
+  } catch (err) {
+    console.error('Error in requestWithdrawal:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// @route   GET api/withdrawals
+// @desc    Get all withdrawals for a user
+// @access  Private
+exports.getUserWithdrawals = async (req, res) => {
+  try {
+    const withdrawals = await Withdrawal.find({ user: req.user.id })
+      .sort({ createdAt: -1 });
+    
+    res.json(withdrawals);
+  } catch (err) {
+    console.error('Error in getUserWithdrawals:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// @route   GET api/withdrawals/:id
+// @desc    Get withdrawal by ID
+// @access  Private
+exports.getWithdrawalById = async (req, res) => {
+  try {
+    const withdrawal = await Withdrawal.findById(req.params.id);
+    
+    if (!withdrawal) {
+      return res.status(404).json({ error: 'Withdrawal not found' });
+    }
+    
+    // Check if the withdrawal belongs to the user
+    if (withdrawal.user.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+    
+    res.json(withdrawal);
+  } catch (err) {
+    console.error('Error in getWithdrawalById:', err.message);
+    
+    if (err.kind === 'ObjectId') {
+      return res.status(404).json({ error: 'Withdrawal not found' });
+    }
+    
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// @route   GET api/withdrawals/balance
+// @desc    Get withdrawable balance for a user
+// @access  Private
+exports.getWithdrawableBalance = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({ balance: user.balance });
+  } catch (err) {
+    console.error('Error in getWithdrawableBalance:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Helper function to get minimum withdrawal amount based on payment method
+function getMinimumWithdrawalAmount(method) {
+  switch (method) {
+    case 'USDT':
+      return 20; // $20 minimum for USDT
+    case 'BankTransfer':
+      return 50; // $50 minimum for bank transfers
+    case 'JazzCash':
+    case 'EasyPaisa':
+      return 10; // $10 minimum for mobile wallets
+    default:
+      return 10; // Default minimum
+  }
+}
+
+// Helper function to calculate withdrawable balance
+const getWithdrawableBalance = async (userId) => {
+  // Get completed investments
+  const completedInvestments = await Investment.find({ 
+    user: userId,
+    status: 'completed'
+  });
+
+  // Get total profit from completed investments
+  const investmentProfit = completedInvestments.reduce((total, investment) => {
+    return total + investment.profit;
+  }, 0);
+
+  // Get referral earnings
+  const referrals = await Referral.find({
+    referrer: userId,
+    status: 'completed'
+  });
+
+  const referralEarnings = referrals.reduce((total, referral) => {
+    return total + referral.commission;
+  }, 0);
+
+  // Get pending withdrawals
+  const pendingWithdrawals = await Withdrawal.find({
+    user: userId,
+    status: 'pending'
+  });
+
+  const pendingWithdrawalAmount = pendingWithdrawals.reduce((total, withdrawal) => {
+    return total + withdrawal.amount;
+  }, 0);
+
+  // Calculate withdrawable balance
+  const totalEarnings = investmentProfit + referralEarnings;
+  const withdrawableBalance = totalEarnings - pendingWithdrawalAmount;
+
+  return Math.max(0, withdrawableBalance);
+};
+
+// Export helper function for use in other controllers
+exports.getWithdrawableBalanceHelper = getWithdrawableBalance; 
