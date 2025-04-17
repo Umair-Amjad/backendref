@@ -243,65 +243,53 @@ exports.updateInvestmentStatus = async (req, res) => {
 // @access  Private/Admin
 exports.getAdminDashboard = async (req, res) => {
   try {
-    // Total users
-    const totalUsers = await User.countDocuments();
+    // Get counts of various entities
+    const usersCount = await User.countDocuments();
+    const activeInvestmentsCount = await Investment.countDocuments({ status: 'active' });
+    const pendingWithdrawalsCount = await Withdrawal.countDocuments({ status: 'pending' });
     
-    // Total investments
-    const totalInvestments = await Investment.countDocuments();
+    // Get total investment amount
+    const investments = await Investment.find();
+    const totalInvestmentAmount = investments.reduce((sum, inv) => sum + inv.amount, 0);
     
-    // Active investments
-    const activeInvestments = await Investment.countDocuments({ status: 'active' });
+    // Get total withdrawal amount
+    const withdrawals = await Withdrawal.find({ status: 'completed' });
+    const totalWithdrawalAmount = withdrawals.reduce((sum, withdrawal) => sum + withdrawal.amount, 0);
     
-    // Total amount invested
-    const investmentsData = await Investment.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalAmount: { $sum: '$amount' }
-        }
-      }
-    ]);
-    
-    const totalAmountInvested = investmentsData.length > 0 ? investmentsData[0].totalAmount : 0;
-    
-    // Pending withdrawals
-    const pendingWithdrawals = await Withdrawal.countDocuments({ status: 'pending' });
-    
-    // Recent users
+    // Get recent users
     const recentUsers = await User.find()
-      .select('name email referralCode createdAt')
       .sort({ createdAt: -1 })
-      .limit(5);
+      .limit(5)
+      .select('name email referralCode createdAt');
     
-    // Recent investments
+    // Get recent investments
     const recentInvestments = await Investment.find()
-      .populate({
-        path: 'user',
-        select: 'name email'
-      })
       .sort({ createdAt: -1 })
-      .limit(5);
+      .limit(5)
+      .populate('user', 'name email');
     
-    // Recent withdrawals
-    const recentWithdrawals = await Withdrawal.find()
-      .populate({
-        path: 'user',
-        select: 'name email'
-      })
-      .sort({ requestedAt: -1 })
-      .limit(5);
+    // Get pending withdrawals
+    const pendingWithdrawals = await Withdrawal.find({ status: 'pending' })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate('user', 'name email');
     
     res.status(200).json({
       success: true,
       data: {
-        totalUsers,
-        totalInvestments,
-        activeInvestments,
-        totalAmountInvested,
-        pendingWithdrawals,
+        counts: {
+          users: usersCount,
+          activeInvestments: activeInvestmentsCount,
+          pendingWithdrawals: pendingWithdrawalsCount
+        },
+        financials: {
+          totalInvestmentAmount,
+          totalWithdrawalAmount,
+          netBalance: totalInvestmentAmount - totalWithdrawalAmount
+        },
         recentUsers,
         recentInvestments,
-        recentWithdrawals
+        pendingWithdrawals
       }
     });
   } catch (error) {

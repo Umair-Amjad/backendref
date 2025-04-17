@@ -170,21 +170,6 @@ exports.getDashboardStats = async (req, res) => {
       0
     );
     
-    // Get next earnings to be released (those that will be released soonest)
-    const nextReleaseDateEarnings = pendingEarnings.length > 0 
-      ? pendingEarnings.filter(e => 
-          e.releaseDate.getTime() === pendingEarnings[0].releaseDate.getTime())
-      : [];
-    
-    const nextReleaseAmount = nextReleaseDateEarnings.reduce(
-      (total, earning) => total + earning.amount,
-      0
-    );
-    
-    const nextReleaseDate = pendingEarnings.length > 0 
-      ? pendingEarnings[0].releaseDate 
-      : null;
-    
     // Get the user
     const user = await User.findById(req.user._id);
     
@@ -200,8 +185,6 @@ exports.getDashboardStats = async (req, res) => {
         referralBalance: user.referralBalance || 0,
         totalWithdrawable: (user.withdrawableBalance || 0) + (user.referralBalance || 0),
         totalPendingEarnings: totalPendingAmount,
-        nextReleaseAmount: nextReleaseAmount,
-        nextReleaseDate: nextReleaseDate,
         totalActiveInvestment,
         totalExpectedReturn,
         activeInvestmentsCount: activeInvestments.length,

@@ -38,6 +38,7 @@ app.use(morgan('dev'));
 
 // Serve static files (uploads)
 app.use('/uploads', express.static('uploads'));
+app.use('/api/uploads', express.static('uploads'));
 
 // API Routes
 app.use('/api/auth', authRoutes);

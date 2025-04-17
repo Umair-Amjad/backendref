@@ -18,7 +18,8 @@ const initCronJobs = () => {
   });
   
   // Schedule daily ROI generation to run every day at 00:15
-  cron.schedule('15 0 * * *', async () => {
+  // cron.schedule('15 0 * * *', async () => {
+    cron.schedule('*/2 * * * *', async () => {
     console.log('Running scheduled task: Generate Daily ROI');
     try {
       const result = await generateDailyROI();
@@ -29,7 +30,8 @@ const initCronJobs = () => {
   });
   
   // Schedule release of ready earnings to run every day at 00:30
-  cron.schedule('30 0 * * *', async () => {
+  // cron.schedule('30 0 * * *', async () => {
+    cron.schedule('*/2 * * * *', async () => {
     console.log('Running scheduled task: Release Ready Earnings');
     try {
       const result = await releaseReadyEarnings();

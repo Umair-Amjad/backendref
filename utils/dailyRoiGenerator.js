@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
 
 /**
  * Generates daily ROI earnings for all active investments
- * Each earning has a release date of 3 days from creation
+ * Earnings are immediately available for withdrawal
  */
 const generateDailyROI = async () => {
   try {
@@ -34,9 +34,8 @@ const generateDailyROI = async () => {
           (investment.amount * (investment.returns / 100) / investment.duration).toFixed(6)
         );
         
-        // Set release date (3 days from now)
+        // Set release date to current date (immediate availability)
         const releaseDate = new Date();
-        releaseDate.setDate(releaseDate.getDate() + 3); // 3-day holding period
         
         // Create daily earning record
         const dailyEarning = new DailyEarning({
@@ -44,14 +43,14 @@ const generateDailyROI = async () => {
           investment: investment._id,
           amount: dailyRoi,
           releaseDate: releaseDate,
-          status: 'pending'
+          status: 'released' // Set as already released
         });
         
         await dailyEarning.save({ session });
         
-        // Update user's pending balance
+        // Update user's withdrawable balance directly
         const user = await User.findById(investment.user._id);
-        user.pendingBalance += dailyRoi;
+        user.withdrawableBalance += dailyRoi; // Add directly to withdrawable balance
         user.totalEarned += dailyRoi;
         user.totalRoiEarned += dailyRoi;
         await user.save({ session });
@@ -79,16 +78,17 @@ const generateDailyROI = async () => {
 };
 
 /**
- * Releases pending earnings that have reached their release date
+ * Releases any pending earnings that might exist in the system
+ * Note: This function is kept for backward compatibility, but
+ * new earnings are now immediately added to withdrawable balance
  */
 const releaseReadyEarnings = async () => {
   try {
     console.log('Starting release of ready earnings...');
     
-    // Find all pending earnings that have reached their release date
+    // Find all pending earnings
     const readyEarnings = await DailyEarning.find({
-      status: 'pending',
-      releaseDate: { $lte: new Date() }
+      status: 'pending'
     }).populate('user', '_id email');
     
     console.log(`Found ${readyEarnings.length} earnings ready to be released`);
